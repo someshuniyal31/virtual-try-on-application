@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Shirt Fitting</title>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='css/styles2.css') }}"
+    />
+  </head>
+  <body>
+    <h1>Upload a Shirt Image</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <!-- Hidden File Input -->
+      <input id="shirt-upload" type="file" name="shirt" style="display: none" />
+
+      <!-- Custom Label Acting as Button -->
+      <label for="shirt-upload" class="custom-file-upload"
+        >Choose Shirt Image</label
+      >
+      <button type="submit">Upload Shirt</button>
+    </form>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if final_image_url %}
+    <h2>Final Image with Shirt</h2>
+    <img src="{{ final_image_url }}" alt="Final Image" />
+    {% endif %}
+  </body>
+</html>

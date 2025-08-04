@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Photo Validation</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/styles1.css') }}"
+    />
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  </head>
+  <body>
+    <h1>Upload a Photo or Use Your Webcam</h1>
+
+    <form method="POST" enctype="multipart/form-data">
+      <label>
+        <input
+          type="radio"
+          name="photo-option"
+          id="upload-option"
+          checked
+          onclick="toggleWebcamOption()"
+        />
+        Upload Photo
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="photo-option"
+          id="webcam-option"
+          onclick="toggleWebcamOption()"
+        />
+        Use Webcam
+      </label>
+
+      <!-- File Upload Option -->
+      <div id="file-input">
+        <!-- Hidden File Input -->
+        <input id="file-upload" type="file" name="file" style="display: none" />
+
+        <!-- Custom Label Acting as Button -->
+        <label for="file-upload" class="custom-file-upload">Choose File</label>
+        <button type="submit">Upload Photo</button>
+      </div>
+
+      <!-- Webcam Option -->
+      <div id="webcam-container" style="display: none">
+        <video autoplay></video>
+        <label for="countdown-select">Select Countdown:</label>
+        <select id="countdown-select">
+          <option value="3">3 seconds</option>
+          <option value="5">5 seconds</option>
+          <option value="10">10 seconds</option>
+        </select>
+        <button type="button" onclick="startCountdown()">Capture Photo</button>
+      </div>
+    </form>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if show_shirt_fitting %}
+    <a id="shirtFittingLink" href="{{ url_for('upload_shirt') }}"
+      >Proceed to Shirt Fitting</a
+    >
+    {% endif %}
+  </body>
+</html>

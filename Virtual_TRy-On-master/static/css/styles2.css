@@ -1,0 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
+
+/* General Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #f5efe7; /* Off-White */
+  color: #213555; /* Dark Blue */
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+h1 {
+  font-size: 4rem;
+  color: #213555; /* Dark Blue */
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+form {
+  background-color: #ffffff; /* White */
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+input[type="file"] {
+  margin-bottom: 20px;
+  font-size: 1rem;
+  color: #3e5879; /* Medium Blue */
+}
+
+button {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #8dc4b6; /* Light Green */
+  color: #ffffff; /* White */
+  border: none;
+  padding: 10px 20px;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 5px;
+  margin-top: 10px;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #76b0a1; /* Slightly darker green */
+}
+
+p {
+  margin-top: 20px;
+  font-size: 1rem;
+  color: #3e5879; /* Medium Blue */
+  text-align: center;
+}
+
+h2 {
+  font-size: 2rem;
+  color: #213555; /* Dark Blue */
+  margin-top: 30px;
+  text-align: center;
+}
+
+img {
+  margin-top: 20px;
+  max-width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}

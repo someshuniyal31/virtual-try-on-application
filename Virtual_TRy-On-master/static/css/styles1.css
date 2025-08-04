@@ -1,0 +1,148 @@
+@import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
+
+/* General Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #f5efe7; /* Off-White background */
+  color: #213555; /* Dark Blue text */
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+h1 {
+  /* font-size: 2.5rem; */
+  font-size: 4rem;
+  color: #213555; /* Dark Blue for headings */
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+form {
+  background-color: #ffffff; /* White background for the form */
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 800px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  max-height: 80vh; /* Limits the height of the form */
+  overflow-y: auto; /* Enables vertical scrolling when content exceeds form height */
+}
+
+label {
+  display: inline-block;
+  font-size: 1.2rem;
+  margin: 10px 20px;
+  cursor: pointer;
+  color: #213555; /* Dark Blue for labels */
+}
+
+input[type="radio"] {
+  margin-right: 8px;
+}
+
+#file-input,
+#webcam-container {
+  display: none;
+  margin-top: 20px;
+  width: 100%;
+}
+
+#file-input {
+  display: block;
+}
+
+#webcam-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 400px;
+  width: 100%;
+  background-color: #f5efe7; /* Light Green for the webcam container */
+  border-radius: 8px;
+  padding: 10px;
+  box-sizing: border-box;
+  overflow-y: auto; /* Enables scrolling inside the webcam container */
+}
+
+video {
+  width: 100%;
+  height: auto;
+  max-height: 100%; /* Ensures the video takes up the space of the container */
+  object-fit: cover;
+  border-radius: 8px;
+  background-color: black;
+}
+
+label[for="countdown-select"] {
+  font-size: 1rem;
+  margin-top: 10px;
+  color: #213555; /* Dark Blue for countdown labels */
+}
+
+#countdown-select {
+  font-family: "Jersey 10", sans-serif;
+  margin: 10px 0;
+  padding: 8px;
+  font-size: 1rem;
+  border: 2px solid #3e5879; /* Medium Blue border */
+  color: #213555; /* Dark Blue text */
+  background-color: #f5efe7; /* Off-White background */
+  border-radius: 5px;
+}
+
+button {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #3e5879; /* Medium Blue button */
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 5px;
+  margin-top: 10px;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #213555; /* Dark Blue on hover */
+}
+
+#shirtFittingLink {
+  display: block;
+  margin-top: 20px;
+  font-size: 1.2rem;
+  color: #8dc4b6; /* Light Green link */
+  text-decoration: none;
+}
+
+#shirtFittingLink:hover {
+  text-decoration: underline;
+}
+
+/* Countdown Timer */
+#countdown-display {
+  font-size: 3rem;
+  color: red;
+  font-weight: bold;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+}

@@ -1,0 +1,2161 @@
+
+
+
+
+Draft1: Allows user to upload photo and know if photo is validated
+
+
+-- index.html
+
+<!DOCTYPE html>
+<html lang="en">
+  <!-- Example of a simple CSS addition -->
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    form {
+      margin: 20px;
+    }
+    img {
+      margin-top: 20px;
+    }
+  </style>
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pose Detection</title>
+  </head>
+  <body>
+    <h1>Upload Your Photo for Pose Detection</h1>
+
+    <!-- Form to upload image -->
+    <form action="/" method="POST" enctype="multipart/form-data">
+      <label for="file">Select an image:</label>
+      <input type="file" name="file" id="file" required />
+      <button type="submit">Upload</button>
+    </form>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% if filename %}
+    <img
+      src="{{ url_for('static', filename='uploads/' + filename) }}"
+      alt="Uploaded Image"
+      width="300"
+    />
+    {% endif %} {% endif %}
+  </body>
+</html> 
+
+
+
+-- valid_logic.py
+
+
+# Use this program for valid person image logic
+
+
+import cv2
+import mediapipe as mp
+
+def check_human_pose_with_hands(image_path):
+    # Load Mediapipe Pose solution
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+    mp_drawing = mp.solutions.drawing_utils
+
+    # Read the image
+    image = cv2.imread(image_path)
+    if image is None:
+        print("Error: Image not found!")
+        return False
+
+    # Convert the image to RGB (required by Mediapipe)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Process the image for pose estimation
+    results = pose.process(image_rgb)
+
+    # Check if any pose landmarks are detected
+    if not results.pose_landmarks:
+        print("No human detected!")
+        return False
+
+    # Extract landmarks
+    landmarks = results.pose_landmarks.landmark
+
+    # Define key landmarks for arms, legs, and body alignment
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW] 
+    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
+    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
+    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
+    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+    
+    # Check hands position: hands should be down
+    hands = (
+        left_wrist.y > left_shoulder.y and
+        right_wrist.y > right_shoulder.y and
+        abs(left_wrist.x - left_shoulder.x) < 0.1 and  # Hands close to body
+        abs(right_wrist.x - right_shoulder.x) < 0.1 and
+        left_wrist.x > left_shoulder.x and 
+        right_wrist.x < right_shoulder.x
+    )
+
+    # Check if standing straight: y-coordinates of ankles, knees, hips, and shoulders in ascending order
+    standing_straight = (
+        left_ankle.y > left_knee.y > left_hip.y > left_shoulder.y and
+        right_ankle.y > right_knee.y > right_hip.y > right_shoulder.y
+    )
+
+    # Check full body or above-knees visibility
+    body_visibility = (
+        (left_ankle.visibility > 0.5 and right_ankle.visibility > 0.5) or
+        (left_knee.visibility > 0.5 and right_knee.visibility > 0.5)
+    )
+
+    # Evaluate all conditions
+    if hands and standing_straight and body_visibility:
+        return True  # Pose is valid
+    else:
+        return False  # Pose is invalid
+
+
+
+
+-- app.py
+
+from flask import Flask, render_template, request, redirect, url_for
+import os
+from werkzeug.utils import secure_filename
+from valid_logic import check_human_pose_with_hands  # Import the function from pose_detector.py
+
+app = Flask(__name__)
+
+# Set up the upload folder
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'png', 'gif'}
+
+# Function to check if the file extension is valid
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# The route for the homepage and file upload form
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        # Check if the post request has the file part
+        if 'file' not in request.files:
+            return redirect(request.url)
+        file = request.files['file']
+
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+
+            # Call your pose validation function here
+            is_valid = check_human_pose_with_hands(filepath)
+
+            # If the pose is invalid, the form will reload, asking the user to upload again
+            if not is_valid:
+                message = "Invalid Pose! Please try again."
+                return render_template('index.html', message=message, filename=filename)
+
+            # If the pose is valid, we display success and stop the loop
+            message = "Good Pose! Photo is valid."
+            return render_template('index.html', message=message, filename=filename)
+
+    # If no file uploaded, or user visits the page for the first time
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+
+
+
+
+
+
+
+Draft2: This allows user to not only upload the photo but also give the option to take the photo using the webcam with a added timer of 5s for giving user the time to adjust into the webcam
+
+
+
+
+-- index.html
+
+
+\<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pose Detection</title>
+    <style>
+      /* Optional: Style the camera section */
+      #video {
+        width: 100%;
+        max-width: 500px;
+        display: none; /* Hide initially */
+      }
+      #captureBtn {
+        display: none; /* Hide capture button initially */
+      }
+      #submitCapturedPhoto {
+        display: none; /* Hide submit button initially */
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Upload or Capture Your Photo for Pose Detection</h1>
+
+    <!-- Buttons for upload or take photo -->
+    <button id="uploadPhotoBtn">Upload Photo</button>
+    <button id="takePhotoBtn">Take Photo</button>
+
+    <!-- Upload form (hidden initially) -->
+    <div id="uploadSection" style="display: none">
+      <form
+        id="photoForm"
+        action="/submit_photo"
+        method="POST"
+        enctype="multipart/form-data"
+      >
+        <label for="file">Select an image:</label>
+        <input type="file" name="file" id="file" required />
+        <button type="submit">Upload</button>
+      </form>
+    </div>
+
+    <!-- Video capture section for webcam (hidden initially) -->
+    <div id="captureSection" style="display: none">
+      <video id="video" autoplay></video>
+      <button id="captureBtn">Capture Photo in 5s</button>
+      <canvas id="canvas" style="display: none"></canvas>
+      <button id="submitCapturedPhoto">Submit Captured Photo</button>
+    </div>
+
+    <div id="resultMessage"></div>
+    {% if message %}
+    <p>{{ message }}</p>
+    {% if filename %}
+    <img
+      src="{{ url_for('static', filename='uploads/' + filename) }}"
+      alt="Uploaded Image"
+      width="300"
+    />
+    {% endif %} {% endif %}
+
+    <script>
+      const video = document.getElementById("video");
+      const captureBtn = document.getElementById("captureBtn");
+      const submitCapturedPhotoBtn = document.getElementById(
+        "submitCapturedPhoto"
+      );
+      const uploadSection = document.getElementById("uploadSection");
+      const captureSection = document.getElementById("captureSection");
+      const uploadPhotoBtn = document.getElementById("uploadPhotoBtn");
+      const takePhotoBtn = document.getElementById("takePhotoBtn");
+
+      let countdownTimer;
+      let countdownSeconds = 5; // Countdown duration in seconds
+      const countdownDisplay = document.createElement("div");
+      countdownDisplay.style.fontSize = "30px";
+      countdownDisplay.style.color = "red";
+      countdownDisplay.style.fontWeight = "bold";
+      countdownDisplay.style.position = "absolute";
+      countdownDisplay.style.top = "10px";
+      countdownDisplay.style.left = "50%";
+      countdownDisplay.style.transform = "translateX(-50%)";
+      countdownDisplay.style.display = "none"; // Hidden initially
+      captureSection.appendChild(countdownDisplay);
+
+      // Hide upload section and capture section initially
+      uploadSection.style.display = "none";
+      captureSection.style.display = "none";
+
+      // Show upload form
+      uploadPhotoBtn.addEventListener("click", () => {
+        uploadSection.style.display = "block";
+        captureSection.style.display = "none"; // Hide capture section
+      });
+
+      // Show webcam and buttons for photo capture
+      takePhotoBtn.addEventListener("click", () => {
+        captureSection.style.display = "block";
+        uploadSection.style.display = "none"; // Hide upload section
+
+        // Start webcam when "Take Photo" is clicked
+        navigator.mediaDevices
+          .getUserMedia({ video: true })
+          .then((stream) => {
+            video.srcObject = stream;
+            video.style.display = "block"; // Show video element
+            captureBtn.style.display = "block"; // Show capture button
+          })
+          .catch((err) => {
+            console.log("Error: " + err);
+          });
+      });
+
+      // Start countdown when the capture button is clicked
+      captureBtn.addEventListener("click", () => {
+        // Disable the capture button while countdown is active
+        captureBtn.disabled = true;
+        countdownSeconds = 5; // Reset countdown to 5 seconds
+        countdownDisplay.style.display = "block"; // Show countdown display
+        countdownDisplay.innerText = countdownSeconds;
+
+        // Countdown function
+        countdownTimer = setInterval(() => {
+          countdownSeconds--;
+          countdownDisplay.innerText = countdownSeconds;
+
+          if (countdownSeconds === 0) {
+            clearInterval(countdownTimer); // Stop countdown
+            capturePhoto(); // Capture the photo when countdown ends
+          }
+        }, 1000);
+      });
+
+      // Function to capture the photo after countdown
+      function capturePhoto() {
+        const canvas = document.getElementById("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        const imgData = canvas.toDataURL("image/png"); // Convert to base64 image
+        submitCapturedPhotoBtn.style.display = "block"; // Show submit button after capturing
+        submitCapturedPhotoBtn.dataset.imgData = imgData; // Store image data for submission
+        captureBtn.disabled = false; // Enable the capture button again
+      }
+
+      // Submit captured photo
+      submitCapturedPhotoBtn.addEventListener("click", () => {
+        const imgData = submitCapturedPhotoBtn.dataset.imgData;
+
+        if (imgData) {
+          const formData = new FormData();
+          formData.append("file", dataURItoBlob(imgData), "captured_photo.png");
+
+          // Send captured image to the server for processing
+          fetch("/submit_photo", {
+            method: "POST",
+            body: formData,
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              document.getElementById("resultMessage").innerText = data.message;
+            })
+            .catch((error) => console.log("Error:", error));
+        }
+      });
+
+      // Function to convert base64 data URI to Blob
+      function dataURItoBlob(dataURI) {
+        const byteString = atob(dataURI.split(",")[1]);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uintArray = new Uint8Array(arrayBuffer);
+
+        for (let i = 0; i < byteString.length; i++) {
+          uintArray[i] = byteString.charCodeAt(i);
+        }
+
+        return new Blob([uintArray], { type: "image/png" });
+      }
+    </script>
+  </body>
+</html>
+
+
+
+
+-- valid_logic.py
+
+
+# Use this program for valid person image logic
+
+
+import cv2
+import mediapipe as mp
+
+def check_human_pose_with_hands(image_path):
+    # Load Mediapipe Pose solution
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+    mp_drawing = mp.solutions.drawing_utils
+
+    # Read the image
+    image = cv2.imread(image_path)
+    if image is None:
+        print("Error: Image not found!")
+        return False
+
+    # Convert the image to RGB (required by Mediapipe)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Process the image for pose estimation
+    results = pose.process(image_rgb)
+
+    # Check if any pose landmarks are detected
+    if not results.pose_landmarks:
+        print("No human detected!")
+        return False
+
+    # Extract landmarks
+    landmarks = results.pose_landmarks.landmark
+
+    # Define key landmarks for arms, legs, and body alignment
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW] 
+    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
+    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
+    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
+    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+    
+    # Check hands position: hands should be down
+    hands = (
+        left_wrist.y > left_shoulder.y and
+        right_wrist.y > right_shoulder.y and
+        abs(left_wrist.x - left_shoulder.x) < 0.1 and  # Hands close to body
+        abs(right_wrist.x - right_shoulder.x) < 0.1 and
+        left_wrist.x > left_shoulder.x and 
+        right_wrist.x < right_shoulder.x
+    )
+
+    # Check if standing straight: y-coordinates of ankles, knees, hips, and shoulders in ascending order
+    standing_straight = (
+        left_ankle.y > left_knee.y > left_hip.y > left_shoulder.y and
+        right_ankle.y > right_knee.y > right_hip.y > right_shoulder.y
+    )
+
+    # Check full body or above-knees visibility
+    body_visibility = (
+        (left_ankle.visibility > 0.5 and right_ankle.visibility > 0.5) or
+        (left_knee.visibility > 0.5 and right_knee.visibility > 0.5)
+    )
+
+    # Evaluate all conditions
+    if hands and standing_straight and body_visibility:
+        return True  # Pose is valid
+    else:
+        return False  # Pose is invalid
+
+
+
+
+-- app.py
+
+from flask import Flask, render_template, request, jsonify
+import os
+from werkzeug.utils import secure_filename
+from valid_logic import check_human_pose_with_hands  # Import pose validation function
+
+app = Flask(__name__)
+
+# Set up the upload folder
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'png', 'gif'}
+
+# Function to check if the file extension is valid
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/submit_photo', methods=['POST'])
+def submit_photo():
+    if 'file' not in request.files:
+        return jsonify({"message": "No file part!"}), 400
+
+    file = request.files['file']
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Check pose using your logic
+        is_valid = check_human_pose_with_hands(filepath)
+
+        if is_valid:
+            message = "Good Pose! Photo is valid."
+        else:
+            message = "Invalid Pose! Please try again."
+
+        return jsonify({"message": message, "filename": filename})
+
+    return jsonify({"message": "Invalid file type!"}), 400
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+
+
+
+
+
+Draft3: In this draft we upload photo for verification (no webcam option), validate it, after validation option for try-on is given, in the try-on part we simply upload shirt and see how the shirt looks after try-on
+
+
+-- app.py:
+
+from flask import Flask, render_template, request, redirect, url_for
+from flask_cors import CORS
+import os
+from werkzeug.utils import secure_filename
+from valid_logic import check_human_pose_with_hands  # Import the pose validation function
+from shirt_fitting import apply_shirt_to_person  # Import the shirt fitting function
+
+app = Flask(__name__)
+CORS(app)
+
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'png', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        # Handle photo upload
+        if 'file' not in request.files:
+            return render_template('index.html', message="No file uploaded.")
+
+        file = request.files['file']
+
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+
+            # Validate the person's pose
+            is_valid = check_human_pose_with_hands(filepath)
+            if not is_valid:
+                message = "Invalid Pose! Please try again."
+                os.remove(filepath)  # Remove invalid file
+                return render_template('index.html', message=message)
+
+            # Save the validated image with a standard name
+            validated_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+            os.rename(filepath, validated_image_path)
+
+            message = "Photo validated! You can now proceed to shirt fitting."
+            return render_template('index.html', message=message, show_shirt_fitting=True)
+
+    return render_template('index.html')
+
+@app.route('/upload_shirt', methods=['GET', 'POST'])
+def upload_shirt():
+    if request.method == 'POST':
+        if 'shirt' not in request.files:
+            return render_template('upload_shirt.html', message="No shirt file uploaded.")
+
+        shirt_file = request.files['shirt']
+        if shirt_file and allowed_file(shirt_file.filename):
+            shirt_filename = secure_filename(shirt_file.filename)
+            shirt_filepath = os.path.join(app.config['UPLOAD_FOLDER'], shirt_filename)
+            shirt_file.save(shirt_filepath)
+
+            # Get the validated person's image
+            person_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+
+            # Set the path for the final image with the shirt applied
+            output_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'final_image.png')
+
+            # Apply the shirt to the person image using your shirt_fitting.py logic
+            apply_shirt_to_person(person_image_path, shirt_filepath, output_image_path)
+
+            # Display the final image with the shirt applied
+            return render_template('upload_shirt.html', final_image_url=url_for('static', filename='uploads/final_image.png'))
+
+    return render_template('upload_shirt.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+-- shirt_fitting.py:
+
+
+import os
+import cvzone
+import cv2
+from cvzone.PoseModule import PoseDetector
+
+def apply_shirt_to_person(person_image_path, shirt_image_path, output_image_path):
+    # Load the person's validated photo
+    img = cv2.imread(person_image_path)
+
+    detector = PoseDetector()
+
+    # Fixed ratios for resizing shirt
+    fixedRatio = 294 / 202
+    shirtRatioHeightWidth = 581 / 440  # From Shirt Dimensions
+
+    # Detect person's pose
+    img = detector.findPose(img, draw=False)
+    lmList, bboxInfo = detector.findPosition(img, bboxWithHands=False, draw=False)
+
+    if lmList:
+        lm11 = lmList[11][0:2]  # Left shoulder
+        lm12 = lmList[12][0:2]  # Right shoulder
+
+        # Load the shirt image
+        imgShirt = cv2.imread(shirt_image_path, cv2.IMREAD_UNCHANGED)
+
+        # Calculate the width of the shirt based on the distance between shoulders
+        widthOfShirt = int((lm11[0] - lm12[0]) * fixedRatio)
+        imgShirt = cv2.resize(imgShirt, (widthOfShirt, int(widthOfShirt * shirtRatioHeightWidth)))
+
+        # Calculate scale for the shirt
+        currentScale = (lm11[0] - lm12[0]) / 202
+        offset = int(50 * currentScale), int(50 * currentScale)
+
+        try:
+            # Overlay the shirt onto the person image
+            img = cvzone.overlayPNG(img, imgShirt, (lm12[0] - offset[0], lm12[1] - offset[1]))
+        except:
+            pass
+
+    # Save the final image with the shirt applied
+    cv2.imwrite(output_image_path, img)
+
+    return output_image_path
+    
+
+
+
+-- valid_logic.py:
+
+import cv2
+import mediapipe as mp
+
+def check_human_pose_with_hands(image_path):
+    # Load Mediapipe Pose solution
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+    mp_drawing = mp.solutions.drawing_utils
+
+    # Read the image
+    image = cv2.imread(image_path)
+    if image is None:
+        print("Error: Image not found!")
+        return False
+
+    # Convert the image to RGB (required by Mediapipe)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Process the image for pose estimation
+    results = pose.process(image_rgb)
+
+    # Check if any pose landmarks are detected
+    if not results.pose_landmarks:
+        print("No human detected!")
+        return False
+
+    # Extract landmarks
+    landmarks = results.pose_landmarks.landmark
+
+    # Define key landmarks for arms, legs, and body alignment
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW] 
+    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
+    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
+    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
+    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+    
+    # Check hands position: hands should be down
+    hands = (
+        left_wrist.y > left_shoulder.y and
+        right_wrist.y > right_shoulder.y and
+        abs(left_wrist.x - left_shoulder.x) < 0.1 and  # Hands close to body
+        abs(right_wrist.x - right_shoulder.x) < 0.1 and
+        left_wrist.x > left_shoulder.x and 
+        right_wrist.x < right_shoulder.x
+    )
+
+    # Check if standing straight: y-coordinates of ankles, knees, hips, and shoulders in ascending order
+    standing_straight = (
+        left_ankle.y > left_knee.y > left_hip.y > left_shoulder.y and
+        right_ankle.y > right_knee.y > right_hip.y > right_shoulder.y
+    )
+
+    # Check full body or above-knees visibility
+    body_visibility = (
+        (left_ankle.visibility > 0.5 and right_ankle.visibility > 0.5) or
+        (left_knee.visibility > 0.5 and right_knee.visibility > 0.5)
+    )
+
+    # Evaluate all conditions
+    if hands and standing_straight and body_visibility:
+        return True  # Pose is valid
+    else:
+        return False  # Pose is invalid
+
+
+
+
+-- index.html:
+
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Photo Validation</title>
+  </head>
+  <body>
+    <h1>Upload a Photo for Validation</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="file" name="file" />
+      <button type="submit">Upload Photo</button>
+    </form>
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if show_shirt_fitting %}
+    <a href="{{ url_for('upload_shirt') }}">Proceed to Shirt Fitting</a>
+    {% endif %}
+  </body>
+</html>
+
+
+
+
+-- upload_shirt.html:
+
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Shirt Fitting</title>
+  </head>
+  <body>
+    <h1>Upload a Shirt Image</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="file" name="shirt" />
+      <button type="submit">Upload Shirt</button>
+    </form>
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if final_image_url %}
+    <h2>Final Image with Shirt</h2>
+    <img src="{{ final_image_url }}" alt="Final Image" />
+    {% endif %}
+  </body>
+</html>
+
+
+
+-- Directory structure for Draft3:
+
+project/
+├── app.py                        # Main Flask application (Flask + GraphQL integration)
+├── valid_logic.py                # Logic for validating the pose
+├── shirt_fitting.py              # Logic for applying shirt to the image
+├── static/                       # Folder for static assets (images, CSS, etc.)
+│   ├── uploads/                  # Folder for uploaded and processed images
+│       ├── validated_person_image.png  # Validated person image (saved dynamically)
+│       ├── final_image.png       # Final output image with shirt applied (saved dynamically)
+├── templates/                    # Folder for HTML templates
+│   ├── index.html                # HTML for the photo validation page
+│   ├── upload_shirt.html         # HTML for the shirt fitting page
+├── Resources/
+│   ├── Photos                    # For sample People Photos to upload 
+│   ├── Shirts                    # For sample Shirts to try
+│   ├── Temporary                 # Personal reference
+
+
+
+
+
+Draft4: Changes made only in shirt_fitting.py to remove background rest same as Draft3
+
+
+-- shirt_fitting.py:
+
+import os
+import cvzone
+import cv2
+from cvzone.PoseModule import PoseDetector
+from rembg import remove
+from PIL import Image
+import numpy as np
+import io
+
+def remove_background(image_path, output_path):
+    # Open the image
+    with open(image_path, "rb") as input_file:
+        input_data = input_file.read()
+
+    # Remove background
+    output_data = remove(input_data)
+
+    # Convert to image
+    output_image = Image.open(io.BytesIO(output_data))
+
+    # Convert to numpy array for easier manipulation
+    output_array = np.array(output_image)
+
+    # Get the bounding box of the non-white pixels (person's body)
+    non_white_pixels = np.where(output_array[:, :, 3] != 0)  # Check where alpha is not zero
+    min_y, min_x = np.min(non_white_pixels, axis=1)
+    max_y, max_x = np.max(non_white_pixels, axis=1)
+
+    # Crop the image based on the bounding box
+    cropped_image = output_image.crop((min_x, min_y, max_x, max_y))
+
+    # Save the cropped image
+    cropped_image.save(output_path)
+
+    return output_path
+
+def apply_shirt_to_person(person_image_path, shirt_image_path, output_image_path):
+    # First remove the background from the person's image
+    temp_output_image_path = "static/uploads/temp_person_no_bg.png"
+    remove_background(person_image_path, temp_output_image_path)
+
+    # Load the person's image with background removed
+    img = cv2.imread(temp_output_image_path)
+
+    # Initialize PoseDetector to detect the person's pose
+    detector = PoseDetector()
+
+    fixedRatio = 294 / 202
+    shirtRatioHeightWidth = 581 / 440  # From Shirt Dimensions
+
+    # Detect person's pose
+    img = detector.findPose(img, draw=False)
+    lmList, bboxInfo = detector.findPosition(img, bboxWithHands=False, draw=False)
+
+    if lmList:
+        lm11 = lmList[11][0:2]  # Left shoulder
+        lm12 = lmList[12][0:2]  # Right shoulder
+
+        # Load the shirt image
+        imgShirt = cv2.imread(shirt_image_path, cv2.IMREAD_UNCHANGED)
+
+        # Calculate the width of the shirt based on the distance between shoulders
+        widthOfShirt = int((lm11[0] - lm12[0]) * fixedRatio)
+        imgShirt = cv2.resize(imgShirt, (widthOfShirt, int(widthOfShirt * shirtRatioHeightWidth)))
+
+        # Calculate scale for the shirt
+        currentScale = (lm11[0] - lm12[0]) / 202
+        offset = int(50 * currentScale), int(50 * currentScale)
+
+        try:
+            # Overlay the shirt onto the person image (with no background)
+            img = cvzone.overlayPNG(img, imgShirt, (lm12[0] - offset[0], lm12[1] - offset[1]))
+        except:
+            pass
+
+    # Save the final image with the shirt applied
+    cv2.imwrite(output_image_path, img)
+
+    return output_image_path
+
+
+
+
+
+Draft5:  This is the OP version of my codebase, it has all the functionalities i wanted but lacks the asthetic appeal, which i'll get on right after this current draft; in this draft user are given option to upload or take photo throught webcam, that photo is validated, if validated then option for shirt trial is given, in the shirt trial the user can upload the shirt and the overlaid shirt will be displayed on the screen. 
+
+
+-- app.py:
+
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask_cors import CORS
+import os
+from werkzeug.utils import secure_filename
+import base64
+from valid_logic import check_human_pose_with_hands  # Import the pose validation function
+from shirt_fitting import apply_shirt_to_person  # Import the shirt fitting function
+
+app = Flask(__name__)
+CORS(app)
+
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'png', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        if 'file' in request.files:
+            # Handle photo upload
+            file = request.files['file']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+
+                # Validate the person's pose
+                is_valid = check_human_pose_with_hands(filepath)
+                if not is_valid:
+                    os.remove(filepath)  # Remove invalid file
+                    return render_template('index.html', message="Invalid Pose! Please try again.")
+
+                # Save the validated image
+                validated_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+                os.rename(filepath, validated_image_path)
+
+                return render_template('index.html', message="Photo validated! You can now proceed to shirt fitting.", show_shirt_fitting=True)
+        else:
+            return render_template('index.html', message="No file uploaded.")
+
+    return render_template('index.html')
+
+@app.route('/capture_photo', methods=['POST'])
+def capture_photo():
+    if request.method == 'POST':
+        data = request.json.get('image_data')
+        if not data:
+            return jsonify({'error': 'No image data received'}), 400
+
+        # Decode the base64 image data
+        image_data = base64.b64decode(data.split(',')[1])
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'webcam_photo.png')
+        with open(filepath, 'wb') as f:
+            f.write(image_data)
+
+        # Validate the person's pose
+        is_valid = check_human_pose_with_hands(filepath)
+        if not is_valid:
+            os.remove(filepath)
+            return jsonify({'message': 'Invalid Pose! Please try again.', 'success': False})
+
+        # Save the validated image
+        validated_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+        os.rename(filepath, validated_image_path)
+
+        return jsonify({'message': 'Photo validated! You can now proceed to shirt fitting.', 'success': True})
+
+@app.route('/upload_shirt', methods=['GET', 'POST'])
+def upload_shirt():
+    if request.method == 'POST':
+        if 'shirt' not in request.files:
+            return render_template('upload_shirt.html', message="No shirt file uploaded.")
+
+        shirt_file = request.files['shirt']
+        if shirt_file and allowed_file(shirt_file.filename):
+            shirt_filename = secure_filename(shirt_file.filename)
+            shirt_filepath = os.path.join(app.config['UPLOAD_FOLDER'], shirt_filename)
+            shirt_file.save(shirt_filepath)
+
+            person_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+            output_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'final_image.png')
+
+            apply_shirt_to_person(person_image_path, shirt_filepath, output_image_path)
+
+            return render_template('upload_shirt.html', final_image_url=url_for('static', filename='uploads/final_image.png'))
+
+    return render_template('upload_shirt.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+-- index.html:
+
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Photo Validation</title>
+    <script>
+      let videoStream = null;
+      let countdownTimer;
+      let countdownSeconds;
+      const countdownDisplay = document.createElement("div");
+      countdownDisplay.style.fontSize = "30px";
+      countdownDisplay.style.color = "red";
+      countdownDisplay.style.fontWeight = "bold";
+      countdownDisplay.style.position = "absolute";
+      countdownDisplay.style.top = "10px";
+      countdownDisplay.style.left = "50%";
+      countdownDisplay.style.transform = "translateX(-50%)";
+      countdownDisplay.style.display = "none"; // Hidden initially
+      document.body.appendChild(countdownDisplay);
+
+      function toggleWebcamOption() {
+        const webcamContainer = document.getElementById("webcam-container");
+        const fileInput = document.getElementById("file-input");
+        const isWebcam = document.getElementById("webcam-option").checked;
+        webcamContainer.style.display = isWebcam ? "block" : "none";
+        fileInput.style.display = isWebcam ? "none" : "block";
+
+        if (isWebcam) {
+          startWebcam(); // Start webcam only when the user selects it
+        } else {
+          stopWebcam(); // Stop webcam if the user selects upload photo
+        }
+      }
+
+      function startWebcam() {
+        const video = document.querySelector("video");
+        navigator.mediaDevices
+          .getUserMedia({ video: true })
+          .then((stream) => {
+            video.srcObject = stream;
+            videoStream = stream; // Keep reference to the stream so we can stop it later
+          })
+          .catch((err) => console.error("Webcam error:", err));
+      }
+
+      function stopWebcam() {
+        if (videoStream) {
+          const tracks = videoStream.getTracks();
+          tracks.forEach((track) => track.stop()); // Stop all webcam tracks to release the camera
+          videoStream = null;
+        }
+      }
+
+      function startCountdown() {
+        countdownSeconds = parseInt(
+          document.getElementById("countdown-select").value
+        );
+        countdownDisplay.style.display = "block";
+        countdownDisplay.innerText = countdownSeconds;
+
+        countdownTimer = setInterval(() => {
+          countdownSeconds--;
+          countdownDisplay.innerText = countdownSeconds;
+          if (countdownSeconds === 0) {
+            clearInterval(countdownTimer); // Stop countdown
+            capturePhoto(); // Capture the photo when countdown ends
+          }
+        }, 1000);
+      }
+
+      function capturePhoto() {
+        const video = document.querySelector("video");
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvas.toDataURL("image/png");
+
+        fetch("/capture_photo", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ image_data: imageData }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            alert(data.message);
+            if (data.success) {
+              document.getElementById("shirtFittingLink").style.display =
+                "block";
+            }
+          });
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Upload a Photo or Use Your Webcam</h1>
+
+    <form method="POST" enctype="multipart/form-data">
+      <label>
+        <input
+          type="radio"
+          name="photo-option"
+          id="upload-option"
+          checked
+          onclick="toggleWebcamOption()"
+        />
+        Upload Photo
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="photo-option"
+          id="webcam-option"
+          onclick="toggleWebcamOption()"
+        />
+        Use Webcam
+      </label>
+
+      <!-- File Upload Option -->
+      <div id="file-input">
+        <input type="file" name="file" />
+        <button type="submit">Upload Photo</button>
+      </div>
+
+      <!-- Webcam Option -->
+      <div id="webcam-container" style="display: none">
+        <video autoplay></video>
+        <label for="countdown-select">Select Countdown:</label>
+        <select id="countdown-select">
+          <option value="3">3 seconds</option>
+          <option value="5">5 seconds</option>
+          <option value="10">10 seconds</option>
+        </select>
+        <button type="button" onclick="startCountdown()">Capture Photo</button>
+      </div>
+    </form>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if show_shirt_fitting %}
+    <a id="shirtFittingLink" href="{{ url_for('upload_shirt') }}"
+      >Proceed to Shirt Fitting</a
+    >
+    {% endif %}
+  </body>
+</html>
+
+
+
+-- upload_shirt.html:
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Shirt Fitting</title>
+  </head>
+  <body>
+    <h1>Upload a Shirt Image</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="file" name="shirt" />
+      <button type="submit">Upload Shirt</button>
+    </form>
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if final_image_url %}
+    <h2>Final Image with Shirt</h2>
+    <img src="{{ final_image_url }}" alt="Final Image" />
+    {% endif %}
+  </body>
+</html>
+
+
+
+
+-- valid_logic.py:
+
+import cv2
+import mediapipe as mp
+
+def check_human_pose_with_hands(image_path):
+    # Load Mediapipe Pose solution
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+    mp_drawing = mp.solutions.drawing_utils
+
+    # Read the image
+    image = cv2.imread(image_path)
+    if image is None:
+        print("Error: Image not found!")
+        return False
+
+    # Convert the image to RGB (required by Mediapipe)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Process the image for pose estimation
+    results = pose.process(image_rgb)
+
+    # Check if any pose landmarks are detected
+    if not results.pose_landmarks:
+        print("No human detected!")
+        return False
+
+    # Extract landmarks
+    landmarks = results.pose_landmarks.landmark
+
+    # Define key landmarks for arms, legs, and body alignment
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW] 
+    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
+    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
+    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
+    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+    
+    # Check hands position: hands should be down
+    hands = (
+        left_wrist.y > left_shoulder.y and
+        right_wrist.y > right_shoulder.y and
+        abs(left_wrist.x - left_shoulder.x) < 0.1 and  # Hands close to body
+        abs(right_wrist.x - right_shoulder.x) < 0.1 and
+        left_wrist.x > left_shoulder.x and 
+        right_wrist.x < right_shoulder.x
+    )
+
+    # Check if standing straight: y-coordinates of ankles, knees, hips, and shoulders in ascending order
+    standing_straight = (
+        left_ankle.y > left_knee.y > left_hip.y > left_shoulder.y and
+        right_ankle.y > right_knee.y > right_hip.y > right_shoulder.y
+    )
+
+    # Check full body or above-knees visibility
+    body_visibility = (
+        (left_ankle.visibility > 0.5 and right_ankle.visibility > 0.5) or
+        (left_knee.visibility > 0.5 and right_knee.visibility > 0.5)
+    )
+
+    # Evaluate all conditions
+    if hands and standing_straight and body_visibility:
+        return True  # Pose is valid
+    else:
+        return False  # Pose is invalid
+
+
+
+
+-- shirt_fitting.py:
+
+# import os
+# import cvzone
+# import cv2
+# from cvzone.PoseModule import PoseDetector
+# from rembg import remove
+# from PIL import Image
+# import numpy as np
+# import io
+
+# def remove_background(image_path, output_path):
+#     # Open the image
+#     with open(image_path, "rb") as input_file:
+#         input_data = input_file.read()
+
+#     # Remove background
+#     output_data = remove(input_data)
+
+#     # Convert to image
+#     output_image = Image.open(io.BytesIO(output_data))
+
+#     # Convert to numpy array for easier manipulation
+#     output_array = np.array(output_image)
+
+#     # Get the bounding box of the non-white pixels (person's body)
+#     non_white_pixels = np.where(output_array[:, :, 3] != 0)  # Check where alpha is not zero
+#     min_y, min_x = np.min(non_white_pixels, axis=1)
+#     max_y, max_x = np.max(non_white_pixels, axis=1)
+
+#     # Crop the image based on the bounding box
+#     cropped_image = output_image.crop((min_x, min_y, max_x, max_y))
+
+#     # Save the cropped image
+#     cropped_image.save(output_path)
+
+#     return output_path
+
+# def apply_shirt_to_person(person_image_path, shirt_image_path, output_image_path):
+#     # First remove the background from the person's image
+#     temp_output_image_path = "static/uploads/temp_person_no_bg.png"
+#     remove_background(person_image_path, temp_output_image_path)
+
+#     # Load the person's image with background removed
+#     img = cv2.imread(temp_output_image_path)
+
+#     # Initialize PoseDetector to detect the person's pose
+#     detector = PoseDetector()
+
+#     fixedRatio = 294 / 202
+#     shirtRatioHeightWidth = 581 / 440  # From Shirt Dimensions
+
+#     # Detect person's pose
+#     img = detector.findPose(img, draw=False)
+#     lmList, bboxInfo = detector.findPosition(img, bboxWithHands=False, draw=False)
+
+#     if lmList:
+#         lm11 = lmList[11][0:2]  # Left shoulder
+#         lm12 = lmList[12][0:2]  # Right shoulder
+
+#         # Load the shirt image
+#         imgShirt = cv2.imread(shirt_image_path, cv2.IMREAD_UNCHANGED)
+
+#         # Calculate the width of the shirt based on the distance between shoulders
+#         widthOfShirt = int((lm11[0] - lm12[0]) * fixedRatio)
+#         imgShirt = cv2.resize(imgShirt, (widthOfShirt, int(widthOfShirt * shirtRatioHeightWidth)))
+
+#         # Calculate scale for the shirt
+#         currentScale = (lm11[0] - lm12[0]) / 202
+#         offset = int(50 * currentScale), int(50 * currentScale)
+
+#         try:
+#             # Overlay the shirt onto the person image (with no background)
+#             img = cvzone.overlayPNG(img, imgShirt, (lm12[0] - offset[0], lm12[1] - offset[1]))
+#         except:
+#             pass
+
+#     # Save the final image with the shirt applied
+#     cv2.imwrite(output_image_path, img)
+
+#     return output_image_path
+
+
+import os
+import cvzone
+import cv2
+from cvzone.PoseModule import PoseDetector
+from rembg import remove
+from PIL import Image
+import numpy as np
+import io
+
+def remove_background(image_path, output_path):
+    # Open the image and remove the background
+    with open(image_path, "rb") as input_file:
+        input_data = input_file.read()
+
+    # Remove the background using rembg
+    output_data = remove(input_data)
+
+    # Convert to image (PIL)
+    output_image = Image.open(io.BytesIO(output_data))
+
+    # Convert to numpy array
+    output_array = np.array(output_image)
+
+    # Check for non-transparent pixels (alpha channel != 0)
+    alpha_channel = output_array[:, :, 3]  # Alpha channel is in the 4th channel (index 3)
+    mask = alpha_channel != 0  # This will create a mask where the body is
+
+    # Extract the region of the body using the mask (using np.where to get body pixels)
+    body_pixels = np.zeros_like(output_array)  # Empty black image
+    body_pixels[mask] = output_array[mask]  # Copy body pixels
+
+    # Convert back to Image
+    body_image = Image.fromarray(body_pixels)
+
+    # Save the body-only image
+    body_image.save(output_path)
+
+    return output_path
+
+def apply_shirt_to_person(person_image_path, shirt_image_path, output_image_path):
+    # First remove the background from the person's image
+    temp_output_image_path = "static/uploads/temp_person_no_bg.png"
+    remove_background(person_image_path, temp_output_image_path)
+
+    # Load the person's image with background removed (this should only have the body)
+    img = cv2.imread(temp_output_image_path, cv2.IMREAD_UNCHANGED)
+
+    # Initialize PoseDetector to detect the person's pose
+    detector = PoseDetector()
+
+    fixedRatio = 294 / 202
+    shirtRatioHeightWidth = 581 / 440  # From Shirt Dimensions
+
+    # Detect person's pose
+    img = detector.findPose(img, draw=False)
+    lmList, bboxInfo = detector.findPosition(img, bboxWithHands=False, draw=False)
+
+    if lmList:
+        lm11 = lmList[11][0:2]  # Left shoulder
+        lm12 = lmList[12][0:2]  # Right shoulder
+
+        # Load the shirt image
+        imgShirt = cv2.imread(shirt_image_path, cv2.IMREAD_UNCHANGED)
+
+        # Calculate the width of the shirt based on the distance between shoulders
+        widthOfShirt = int((lm11[0] - lm12[0]) * fixedRatio)
+        imgShirt = cv2.resize(imgShirt, (widthOfShirt, int(widthOfShirt * shirtRatioHeightWidth)))
+
+        # Calculate scale for the shirt
+        currentScale = (lm11[0] - lm12[0]) / 202
+        offset = int(50 * currentScale), int(50 * currentScale)
+
+        try:
+            # Overlay the shirt onto the person image (with no background)
+            img = cvzone.overlayPNG(img, imgShirt, (lm12[0] - offset[0], lm12[1] - offset[1]))
+        except Exception as e:
+            print(f"Error overlaying shirt: {e}")
+            pass
+
+    # Save the final image with the shirt applied
+    cv2.imwrite(output_image_path, img)
+
+    return output_image_path
+
+
+
+
+### Next Steps in project: 
+1) Understand what has been done till now
+2) Try to seperate the JS you used in index.html and put in inside another dedicated JS files
+3) Improve the aesthetics of the project using non-invasive CSS
+
+
+
+
+
+
+
+Draft6: Codes for styling with other changes to note - html files are in templates folder; css, js and image files are in static folder under css, js and uploads subfolder.
+
+
+-- app.py:
+
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask_cors import CORS
+import os
+from werkzeug.utils import secure_filename
+import base64
+from valid_logic import check_human_pose_with_hands  # Import the pose validation function
+from shirt_fitting import apply_shirt_to_person  # Import the shirt fitting function
+
+app = Flask(__name__)
+CORS(app)
+
+UPLOAD_FOLDER = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'png', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        if 'file' in request.files:
+            # Handle photo upload
+            file = request.files['file']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+
+                # Validate the person's pose
+                is_valid = check_human_pose_with_hands(filepath)
+                if not is_valid:
+                    os.remove(filepath)  # Remove invalid file
+                    return render_template('index.html', message="Invalid Pose! Please try again.")
+
+                # Save the validated image
+                validated_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+                os.rename(filepath, validated_image_path)
+
+                return render_template('index.html', message="Photo validated! You can now proceed to shirt fitting.", show_shirt_fitting=True)
+        else:
+            return render_template('index.html', message="No file uploaded.")
+
+    return render_template('index.html')
+
+@app.route('/capture_photo', methods=['POST'])
+def capture_photo():
+    if request.method == 'POST':
+        data = request.json.get('image_data')
+        if not data:
+            return jsonify({'error': 'No image data received'}), 400
+
+        # Decode the base64 image data
+        image_data = base64.b64decode(data.split(',')[1])
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'webcam_photo.png')
+        with open(filepath, 'wb') as f:
+            f.write(image_data)
+
+        # Validate the person's pose
+        is_valid = check_human_pose_with_hands(filepath)
+        if not is_valid:
+            os.remove(filepath)
+            return jsonify({'message': 'Invalid Pose! Please try again.', 'success': False})
+
+        # Save the validated image
+        validated_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+        os.rename(filepath, validated_image_path)
+
+        return jsonify({'message': 'Photo validated! You can now proceed to shirt fitting.', 'success': True})
+
+@app.route('/upload_shirt', methods=['GET', 'POST'])
+def upload_shirt():
+    if request.method == 'POST':
+        if 'shirt' not in request.files:
+            return render_template('upload_shirt.html', message="No shirt file uploaded.")
+
+        shirt_file = request.files['shirt']
+        if shirt_file and allowed_file(shirt_file.filename):
+            shirt_filename = secure_filename(shirt_file.filename)
+            shirt_filepath = os.path.join(app.config['UPLOAD_FOLDER'], shirt_filename)
+            shirt_file.save(shirt_filepath)
+
+            person_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'validated_person_image.png')
+            output_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'final_image.png')
+
+            apply_shirt_to_person(person_image_path, shirt_filepath, output_image_path)
+
+            return render_template('upload_shirt.html', final_image_url=url_for('static', filename='uploads/final_image.png'))
+
+    return render_template('upload_shirt.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
+
+
+
+-- index.html:
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Photo Validation</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/styles1.css') }}"
+    />
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  </head>
+  <body>
+    <h1>Upload a Photo or Use Your Webcam</h1>
+
+    <form method="POST" enctype="multipart/form-data">
+      <label>
+        <input
+          type="radio"
+          name="photo-option"
+          id="upload-option"
+          checked
+          onclick="toggleWebcamOption()"
+        />
+        Upload Photo
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="photo-option"
+          id="webcam-option"
+          onclick="toggleWebcamOption()"
+        />
+        Use Webcam
+      </label>
+
+      <!-- File Upload Option -->
+      <div id="file-input">
+        <!-- Hidden File Input -->
+        <input id="file-upload" type="file" name="file" style="display: none" />
+
+        <!-- Custom Label Acting as Button -->
+        <label for="file-upload" class="custom-file-upload">Choose File</label>
+        <button type="submit">Upload Photo</button>
+      </div>
+
+      <!-- Webcam Option -->
+      <div id="webcam-container" style="display: none">
+        <video autoplay></video>
+        <label for="countdown-select">Select Countdown:</label>
+        <select id="countdown-select">
+          <option value="3">3 seconds</option>
+          <option value="5">5 seconds</option>
+          <option value="10">10 seconds</option>
+        </select>
+        <button type="button" onclick="startCountdown()">Capture Photo</button>
+      </div>
+    </form>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if show_shirt_fitting %}
+    <a id="shirtFittingLink" href="{{ url_for('upload_shirt') }}"
+      >Proceed to Shirt Fitting</a
+    >
+    {% endif %}
+  </body>
+</html>
+
+
+
+
+-- styles1.css:
+
+@import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
+
+/* General Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #f5efe7; /* Off-White background */
+  color: #213555; /* Dark Blue text */
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+h1 {
+  /* font-size: 2.5rem; */
+  font-size: 4rem;
+  color: #213555; /* Dark Blue for headings */
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+form {
+  background-color: #ffffff; /* White background for the form */
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 800px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  max-height: 80vh; /* Limits the height of the form */
+  overflow-y: auto; /* Enables vertical scrolling when content exceeds form height */
+}
+
+label {
+  display: inline-block;
+  font-size: 1.2rem;
+  margin: 10px 20px;
+  cursor: pointer;
+  color: #213555; /* Dark Blue for labels */
+}
+
+input[type="radio"] {
+  margin-right: 8px;
+}
+
+#file-input,
+#webcam-container {
+  display: none;
+  margin-top: 20px;
+  width: 100%;
+}
+
+#file-input {
+  display: block;
+}
+
+#webcam-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 400px;
+  width: 100%;
+  background-color: #f5efe7; /* Light Green for the webcam container */
+  border-radius: 8px;
+  padding: 10px;
+  box-sizing: border-box;
+  overflow-y: auto; /* Enables scrolling inside the webcam container */
+}
+
+video {
+  width: 100%;
+  height: auto;
+  max-height: 100%; /* Ensures the video takes up the space of the container */
+  object-fit: cover;
+  border-radius: 8px;
+  background-color: black;
+}
+
+label[for="countdown-select"] {
+  font-size: 1rem;
+  margin-top: 10px;
+  color: #213555; /* Dark Blue for countdown labels */
+}
+
+#countdown-select {
+  font-family: "Jersey 10", sans-serif;
+  margin: 10px 0;
+  padding: 8px;
+  font-size: 1rem;
+  border: 2px solid #3e5879; /* Medium Blue border */
+  color: #213555; /* Dark Blue text */
+  background-color: #f5efe7; /* Off-White background */
+  border-radius: 5px;
+}
+
+button {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #3e5879; /* Medium Blue button */
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 5px;
+  margin-top: 10px;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #213555; /* Dark Blue on hover */
+}
+
+#shirtFittingLink {
+  display: block;
+  margin-top: 20px;
+  font-size: 1.2rem;
+  color: #8dc4b6; /* Light Green link */
+  text-decoration: none;
+}
+
+#shirtFittingLink:hover {
+  text-decoration: underline;
+}
+
+/* Countdown Timer */
+#countdown-display {
+  font-size: 3rem;
+  color: red;
+  font-weight: bold;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+}
+
+
+
+-- script.js:
+
+let videoStream = null;
+let countdownTimer;
+let countdownSeconds;
+const countdownDisplay = document.createElement("div");
+countdownDisplay.style.fontSize = "30px";
+countdownDisplay.style.color = "red";
+countdownDisplay.style.fontWeight = "bold";
+countdownDisplay.style.position = "absolute";
+countdownDisplay.style.top = "10px";
+countdownDisplay.style.left = "50%";
+countdownDisplay.style.transform = "translateX(-50%)";
+countdownDisplay.style.display = "none"; // Hidden initially
+document.body.appendChild(countdownDisplay);
+
+function toggleWebcamOption() {
+  const webcamContainer = document.getElementById("webcam-container");
+  const fileInput = document.getElementById("file-input");
+  const isWebcam = document.getElementById("webcam-option").checked;
+  webcamContainer.style.display = isWebcam ? "block" : "none";
+  fileInput.style.display = isWebcam ? "none" : "block";
+
+  if (isWebcam) {
+    startWebcam(); // Start webcam only when the user selects it
+  } else {
+    stopWebcam(); // Stop webcam if the user selects upload photo
+  }
+}
+
+function startWebcam() {
+  const video = document.querySelector("video");
+  navigator.mediaDevices
+    .getUserMedia({ video: true })
+    .then((stream) => {
+      video.srcObject = stream;
+      videoStream = stream; // Keep reference to the stream so we can stop it later
+    })
+    .catch((err) => console.error("Webcam error:", err));
+}
+
+function stopWebcam() {
+  if (videoStream) {
+    const tracks = videoStream.getTracks();
+    tracks.forEach((track) => track.stop()); // Stop all webcam tracks to release the camera
+    videoStream = null;
+  }
+}
+
+function startCountdown() {
+  countdownSeconds = parseInt(
+    document.getElementById("countdown-select").value
+  );
+  countdownDisplay.style.display = "block";
+  countdownDisplay.innerText = countdownSeconds;
+
+  countdownTimer = setInterval(() => {
+    countdownSeconds--;
+    countdownDisplay.innerText = countdownSeconds;
+    if (countdownSeconds === 0) {
+      clearInterval(countdownTimer); // Stop countdown
+      capturePhoto(); // Capture the photo when countdown ends
+    }
+  }, 1000);
+}
+
+function capturePhoto() {
+  const video = document.querySelector("video");
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imageData = canvas.toDataURL("image/png");
+
+  fetch("/capture_photo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ image_data: imageData }),
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      alert(data.message);
+      if (data.success) {
+        document.getElementById("shirtFittingLink").style.display = "block";
+      }
+    });
+}
+
+
+
+
+-- upload_shirt.py:
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Shirt Fitting</title>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="{{ url_for('static', filename='css/styles2.css') }}"
+    />
+  </head>
+  <body>
+    <h1>Upload a Shirt Image</h1>
+    <form method="POST" enctype="multipart/form-data">
+      <!-- Hidden File Input -->
+      <input id="shirt-upload" type="file" name="shirt" style="display: none" />
+
+      <!-- Custom Label Acting as Button -->
+      <label for="shirt-upload" class="custom-file-upload"
+        >Choose Shirt Image</label
+      >
+      <button type="submit">Upload Shirt</button>
+    </form>
+
+    {% if message %}
+    <p>{{ message }}</p>
+    {% endif %} {% if final_image_url %}
+    <h2>Final Image with Shirt</h2>
+    <img src="{{ final_image_url }}" alt="Final Image" />
+    {% endif %}
+  </body>
+</html>
+
+
+
+-- styles2.css:
+
+@import url("https://fonts.googleapis.com/css2?family=Jersey+10&display=swap");
+
+/* General Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #f5efe7; /* Off-White */
+  color: #213555; /* Dark Blue */
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+h1 {
+  font-size: 4rem;
+  color: #213555; /* Dark Blue */
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+form {
+  background-color: #ffffff; /* White */
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+input[type="file"] {
+  margin-bottom: 20px;
+  font-size: 1rem;
+  color: #3e5879; /* Medium Blue */
+}
+
+button {
+  font-family: "Jersey 10", sans-serif;
+  background-color: #8dc4b6; /* Light Green */
+  color: #ffffff; /* White */
+  border: none;
+  padding: 10px 20px;
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 5px;
+  margin-top: 10px;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: #76b0a1; /* Slightly darker green */
+}
+
+p {
+  margin-top: 20px;
+  font-size: 1rem;
+  color: #3e5879; /* Medium Blue */
+  text-align: center;
+}
+
+h2 {
+  font-size: 2rem;
+  color: #213555; /* Dark Blue */
+  margin-top: 30px;
+  text-align: center;
+}
+
+img {
+  margin-top: 20px;
+  max-width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+
+
+-- valid_logic.py:
+
+import cv2
+import mediapipe as mp
+
+def check_human_pose_with_hands(image_path):
+    # Load Mediapipe Pose solution
+    mp_pose = mp.solutions.pose
+    pose = mp_pose.Pose()
+    mp_drawing = mp.solutions.drawing_utils
+
+    # Read the image
+    image = cv2.imread(image_path)
+    if image is None:
+        print("Error: Image not found!")
+        return False
+
+    # Convert the image to RGB (required by Mediapipe)
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Process the image for pose estimation
+    results = pose.process(image_rgb)
+
+    # Check if any pose landmarks are detected
+    if not results.pose_landmarks:
+        print("No human detected!")
+        return False
+
+    # Extract landmarks
+    landmarks = results.pose_landmarks.landmark
+
+    # Define key landmarks for arms, legs, and body alignment
+    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
+    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW] 
+    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
+    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
+    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
+    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
+    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+    
+    # Check hands position: hands should be down
+    hands = (
+        left_wrist.y > left_shoulder.y and
+        right_wrist.y > right_shoulder.y and
+        abs(left_wrist.x - left_shoulder.x) < 0.1 and  # Hands close to body
+        abs(right_wrist.x - right_shoulder.x) < 0.1 and
+        left_wrist.x > left_shoulder.x and 
+        right_wrist.x < right_shoulder.x
+    )
+
+    # Check if standing straight: y-coordinates of ankles, knees, hips, and shoulders in ascending order
+    standing_straight = (
+        left_ankle.y > left_knee.y > left_hip.y > left_shoulder.y and
+        right_ankle.y > right_knee.y > right_hip.y > right_shoulder.y
+    )
+
+    # Check full body or above-knees visibility
+    body_visibility = (
+        (left_ankle.visibility > 0.5 and right_ankle.visibility > 0.5) or
+        (left_knee.visibility > 0.5 and right_knee.visibility > 0.5)
+    )
+
+    # Evaluate all conditions
+    if hands and standing_straight and body_visibility:
+        return True  # Pose is valid
+    else:
+        return False  # Pose is invalid
+
+
+
+
+-- shirt_fitting.py:
+
+
+import os
+import cvzone
+import cv2
+from cvzone.PoseModule import PoseDetector
+from rembg import remove
+from PIL import Image
+import numpy as np
+import io
+
+def remove_background(image_path, output_path):
+    # Open the image and remove the background
+    with open(image_path, "rb") as input_file:
+        input_data = input_file.read()
+
+    # Remove the background using rembg
+    output_data = remove(input_data)
+
+    # Convert to image (PIL)
+    output_image = Image.open(io.BytesIO(output_data))
+
+    # Convert to numpy array
+    output_array = np.array(output_image)
+
+    # Check for non-transparent pixels (alpha channel != 0)
+    alpha_channel = output_array[:, :, 3]  # Alpha channel is in the 4th channel (index 3)
+    mask = alpha_channel != 0  # This will create a mask where the body is
+
+    # Extract the region of the body using the mask (using np.where to get body pixels)
+    body_pixels = np.zeros_like(output_array)  # Empty black image
+    body_pixels[mask] = output_array[mask]  # Copy body pixels
+
+    # Convert back to Image
+    body_image = Image.fromarray(body_pixels)
+
+    # Save the body-only image
+    body_image.save(output_path)
+
+    return output_path
+
+def apply_shirt_to_person(person_image_path, shirt_image_path, output_image_path):
+    # First remove the background from the person's image
+    temp_output_image_path = "static/uploads/temp_person_no_bg.png"
+    remove_background(person_image_path, temp_output_image_path)
+
+    # Load the person's image with background removed (this should only have the body)
+    img = cv2.imread(temp_output_image_path, cv2.IMREAD_UNCHANGED)
+
+    # Initialize PoseDetector to detect the person's pose
+    detector = PoseDetector()
+
+    fixedRatio = 294 / 202
+    shirtRatioHeightWidth = 581 / 440  # From Shirt Dimensions
+
+    # Detect person's pose
+    img = detector.findPose(img, draw=False)
+    lmList, bboxInfo = detector.findPosition(img, bboxWithHands=False, draw=False)
+
+    if lmList:
+        lm11 = lmList[11][0:2]  # Left shoulder
+        lm12 = lmList[12][0:2]  # Right shoulder
+
+        # Load the shirt image
+        imgShirt = cv2.imread(shirt_image_path, cv2.IMREAD_UNCHANGED)
+
+        # Calculate the width of the shirt based on the distance between shoulders
+        widthOfShirt = int((lm11[0] - lm12[0]) * fixedRatio)
+        imgShirt = cv2.resize(imgShirt, (widthOfShirt, int(widthOfShirt * shirtRatioHeightWidth)))
+
+        # Calculate scale for the shirt
+        currentScale = (lm11[0] - lm12[0]) / 202
+        offset = int(50 * currentScale), int(50 * currentScale)
+
+        try:
+            # Overlay the shirt onto the person image (with no background)
+            img = cvzone.overlayPNG(img, imgShirt, (lm12[0] - offset[0], lm12[1] - offset[1]))
+        except Exception as e:
+            print(f"Error overlaying shirt: {e}")
+            pass
+
+    # Save the final image with the shirt applied
+    cv2.imwrite(output_image_path, img)
+
+    return output_image_path
+
+
+
+
+
+
+
+
+
+
+
+***
+Future Work: 
+- Host and Deploy this website version till Draft6 publicly
+- Perform ML on some people photo dataset for getting generalized model that estimates offset and scaling ratio for all bodies with highest possible accuracy
+- After the photo is validated, allow users to shop not only for t-shirts but also for other wearables, and provide in-site clothing options as well along with upload from local storage
